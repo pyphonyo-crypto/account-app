@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>我們家的帳</title>
+<meta name="theme-color" content="#1D6A52" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icon-192.png" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="我們家的帳" />
+<style>body { margin: 0; background: #F2F5F3; }</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef } = React;
+
+/* ─── 常數 ─── */
+const CATS = ["房租", "管理費", "水電費", "伙食", "寵物", "日用雜貨", "家居設備", "儲蓄", "其他"];
+const CAT_COLOR = {
+  房租: "#1D6A52", 管理費: "#2E7D66", 水電費: "#4A8F7B", 伙食: "#B98A2F",
+  寵物: "#8A6FA8", 日用雜貨: "#5B7FA6", 家居設備: "#7A8681", 儲蓄: "#3E5C54", 其他: "#A3ADA8",
+};
+/* ═══════════════════════════════════════════════════════
+   ▼▼ 只需要改這裡 ▼▼
+   到 console.firebase.google.com 建立專案後，
+   把系統給你的 firebaseConfig 整段換掉下面的內容
+   （詳細步驟見「設定教學.md」）
+   ═══════════════════════════════════════════════════════ */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyC5BVSUj4GJOA7p7JxSlRbvKOGxBY-Wnbk",
+  authDomain: "accounting-app-6e3b4.firebaseapp.com",
+  projectId: "accounting-app-6e3b4",
+  storageBucket: "accounting-app-6e3b4.firebasestorage.app",
+  messagingSenderId: "667635469108",
+  appId: "1:667635469108:web:8cd45c33ec4248fb9bb361",
+  measurementId: "G-4TZJ759ZW1",
+};
+/* ═══════════════ ▲▲ 只需要改這裡 ▲▲ ═══════════════ */
+
+
+const fmt = (n) => (n < 0 ? "-" : "") + Math.abs(Math.round(n)).toLocaleString("zh-TW");
+const monthLabel = (k) => { const [y, m] = k.split("-"); return `${y} 年 ${Number(m)} 月`; };
+const nextMonthKey = (k) => { let [y, m] = k.split("-").map(Number); m++; if (m > 12) { m = 1; y++; } return `${y}-${String(m).padStart(2, "0")}`; };
+const uid = () => Math.random().toString(36).slice(2, 9);
+
+/* ─── 預設資料：以 2026/06、07 實際紀錄為種子 ─── */
+const SEED = {
+  names: ["家盈", "秉宏"],
+  months: {
+    "2026-06": {
+      due: [11000, 29750],
+      extra: [{ amount: 5000, note: "媽媽給的生活費" }, { amount: 0, note: "" }],
+      actual: [-5288, 20640],
+      expenses: [
+        { id: uid(), date: "2026-06-04", cat: "伙食", item: "蛋", amount: 85, payer: 0, note: "" },
+        { id: uid(), date: "2026-06-05", cat: "伙食", item: "雞胸肉", amount: 999, payer: 0, note: "" },
+        { id: uid(), date: "2026-06-05", cat: "房租", item: "6月房租", amount: 19469, payer: 0, note: "" },
+        { id: uid(), date: "2026-06-05", cat: "伙食", item: "菜", amount: 235, payer: 0, note: "" },
+        { id: uid(), date: "2026-06-05", cat: "管理費", item: "6月管理費", amount: 4531, payer: 1, note: "" },
+        { id: uid(), date: "2026-06-05", cat: "日用雜貨", item: "好市多", amount: 2780, payer: 1, note: "" },
+        { id: uid(), date: "2026-06-05", cat: "家居設備", item: "電風扇", amount: 237, payer: 1, note: "" },
+        { id: uid(), date: "2026-06-05", cat: "寵物", item: "貓飼料", amount: 1562, payer: 1, note: "" },
+        { id: uid(), date: "2026-06-05", cat: "儲蓄", item: "備用+教育金", amount: 4500, payer: 2, note: "" },
+        { id: uid(), date: "2026-06-08", cat: "伙食", item: "毛豆", amount: 250, payer: 0, note: "" },
+        { id: uid(), date: "2026-06-10", cat: "伙食", item: "蛋", amount: 250, payer: 0, note: "" },
+      ],
+    },
+    "2026-07": {
+      due: [11000, 29750],
+      extra: [{ amount: 0, note: "" }, { amount: 0, note: "" }],
+      actual: [11000, 19628],
+      expenses: [
+        { id: uid(), date: "2026-07-01", cat: "房租", item: "7月房租", amount: 24000, payer: 2, note: "" },
+        { id: uid(), date: "2026-07-01", cat: "儲蓄", item: "備用+教育金", amount: 4500, payer: 2, note: "" },
+        { id: uid(), date: "2026-07-01", cat: "水電費", item: "電費", amount: 2485, payer: 1, note: "" },
+        { id: uid(), date: "2026-07-02", cat: "水電費", item: "水費", amount: 451, payer: 1, note: "" },
+        { id: uid(), date: "2026-07-03", cat: "伙食", item: "菜", amount: 90, payer: 2, note: "" },
+        { id: uid(), date: "2026-07-04", cat: "伙食", item: "菜", amount: 437, payer: 2, note: "" },
+        { id: uid(), date: "2026-07-04", cat: "日用雜貨", item: "好市多", amount: 1291, payer: 1, note: "" },
+        { id: uid(), date: "2026-07-04", cat: "寵物", item: "貓飼料", amount: 1700, payer: 1, note: "" },
+        { id: uid(), date: "2026-07-04", cat: "寵物", item: "貓砂", amount: 1275, payer: 1, note: "" },
+        { id: uid(), date: "2026-06-10", cat: "家居設備", item: "廚房崁燈", amount: 565, payer: 1, note: "6月補記" },
+        { id: uid(), date: "2026-06-10", cat: "家居設備", item: "插座", amount: 160, payer: 1, note: "6月補記" },
+        { id: uid(), date: "2026-06-10", cat: "寵物", item: "貓飲水機汰換", amount: 400, payer: 1, note: "6月補記" },
+        { id: uid(), date: "2026-06-14", cat: "日用雜貨", item: "好市多", amount: 1633, payer: 1, note: "6月補記" },
+        { id: uid(), date: "2026-06-14", cat: "日用雜貨", item: "全聯", amount: 162, payer: 1, note: "6月補記" },
+      ],
+    },
+  },
+};
+
+/* ─── 計算引擎：依月份順序串出 結轉／結餘 ─── */
+function computeAll(data) {
+  const keys = Object.keys(data.months).sort();
+  const out = {};
+  let carry = [0, 0], cumBalance = 0, bankCash = 0;
+  for (const k of keys) {
+    const m = data.months[k];
+    const prepaid = [0, 1].map((p) => m.expenses.filter((e) => e.payer === p).reduce((s, e) => s + e.amount, 0));
+    const income = m.due[0] + m.due[1] + m.extra[0].amount + m.extra[1].amount;
+    const expense = m.expenses.reduce((s, e) => s + e.amount, 0);
+    const expected = [0, 1].map((p) => m.due[p] + m.extra[p].amount + carry[p] - prepaid[p]);
+    const unsettled = [0, 1].map((p) => expected[p] - (m.actual[p] ?? 0));
+    const commonPaid = m.expenses.filter((e) => e.payer === 2).reduce((s, e) => s + e.amount, 0);
+    bankCash += (m.actual[0] ?? 0) + (m.actual[1] ?? 0) - commonPaid;
+    const prevBalance = cumBalance;
+    cumBalance += income - expense;
+    const cats = {};
+    m.expenses.forEach((e) => { cats[e.cat] = (cats[e.cat] || 0) + e.amount; });
+    out[k] = { prepaid, income, expense, expected, unsettled, carryIn: [...carry], prevBalance, cumBalance, bankCash, cats };
+    carry = unsettled;
+  }
+  return { keys, byMonth: out };
+}
+
+/* ─── 主元件 ─── */
+function FamilyLedger() {
+  const [data, setData] = useState(null);
+  const [cur, setCur] = useState(null);
+  const [tab, setTab] = useState("overview");
+  const [saveState, setSaveState] = useState("idle");
+  const [showSettings, setShowSettings] = useState(false);
+  const [phase, setPhase] = useState("boot");   // boot | config | setup | ready
+  const [familyCode, setFamilyCode] = useState("");
+  const [myName, setMyName] = useState("");
+  const [form, setForm] = useState({ date: "", cat: "伙食", item: "", amount: "", payer: 2, note: "" });
+  const saveTimer = useRef(null);
+  const loaded = useRef(false);
+  const dbRef = useRef(null);
+  const codeRef = useRef("");
+  const lastWritten = useRef("");
+  const skipSave = useRef(false);
+
+  const subscribe = (db, code) => {
+    codeRef.current = code;
+    const ref = db.collection("ledgers").doc(code);
+    ref.get().then((snap) => {
+      if (!snap.exists) ref.set({ json: JSON.stringify(SEED), updatedAt: Date.now() });
+    }).catch(() => setSaveState("error"));
+    ref.onSnapshot((snap) => {
+      if (!snap.exists) return;
+      const json = snap.data().json;
+      setPhase("ready");
+      if (json === lastWritten.current) { loaded.current = true; return; }
+      try {
+        const d = JSON.parse(json);
+        skipSave.current = true;
+        setData(d);
+        setCur((prev) => (prev && d.months[prev] ? prev : Object.keys(d.months).sort().slice(-1)[0]));
+        loaded.current = true;
+        setSaveState("saved");
+      } catch (e) {}
+    }, () => setSaveState("error"));
+  };
+
+  useEffect(() => {
+    if (!FIREBASE_CONFIG.apiKey || FIREBASE_CONFIG.apiKey.startsWith("請貼上")) { setPhase("config"); return; }
+    if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+    const db = firebase.firestore();
+    try { db.enablePersistence({ synchronizeTabs: true }).catch(() => {}); } catch (e) {}
+    dbRef.current = db;
+    firebase.auth().signInAnonymously().catch(() => setSaveState("error"));
+    const code = localStorage.getItem("family-code") || "";
+    setMyName(localStorage.getItem("my-name") || "");
+    if (code) { setFamilyCode(code); subscribe(db, code); }
+    else setPhase("setup");
+  }, []);
+
+  const startSync = () => {
+    const code = familyCode.trim();
+    if (!code) return;
+    localStorage.setItem("family-code", code);
+    localStorage.setItem("my-name", myName.trim());
+    subscribe(dbRef.current, code);
+  };
+  const changeFamily = () => {
+    localStorage.removeItem("family-code");
+    window.location.reload();
+  };
+
+  useEffect(() => {
+    if (!loaded.current || !data) return;
+    if (skipSave.current) { skipSave.current = false; return; }
+    setSaveState("saving");
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      const json = JSON.stringify(data);
+      lastWritten.current = json;
+      dbRef.current.collection("ledgers").doc(codeRef.current)
+        .set({ json, updatedAt: Date.now(), updatedBy: myName })
+        .then(() => setSaveState("saved"))
+        .catch(() => setSaveState("error"));
+    }, 600);
+  }, [data]);
+
+  if (phase === "config") return (
+    <div style={styles.page}><style>{css}</style>
+      <div style={{ ...styles.card, maxWidth: 460, margin: "60px auto" }}>
+        <div style={styles.eyebrow}>還差一步</div>
+        <h1 style={{ ...styles.title, fontSize: 24 }}>尚未連接雲端資料庫</h1>
+        <p style={{ fontSize: 14, color: "#5C6B64", lineHeight: 1.8 }}>
+          請依照「設定教學.md」建立免費的 Firebase 專案，
+          把取得的 firebaseConfig 貼進 index.html 最上方的
+          FIREBASE_CONFIG 區塊，重新上傳後再開啟這個頁面。
+        </p>
+      </div>
+    </div>
+  );
+  if (phase === "setup") return (
+    <div style={styles.page}><style>{css}</style>
+      <div style={{ ...styles.card, maxWidth: 420, margin: "60px auto" }}>
+        <div style={styles.eyebrow}>共同帳戶・雲端同步</div>
+        <h1 style={{ ...styles.title, fontSize: 26, marginBottom: 10 }}>我們家的帳</h1>
+        <p style={{ fontSize: 14, color: "#5C6B64", lineHeight: 1.8 }}>
+          兩支手機輸入<b>同一組家庭代碼</b>，就會共用同一本帳、即時同步。
+          代碼請設長一點、別人猜不到（像密碼一樣保管）。
+        </p>
+        <input style={{ ...styles.input, marginBottom: 10 }} placeholder="家庭代碼（例：chen-home-9x2k7）"
+          value={familyCode} onChange={(e) => setFamilyCode(e.target.value)} />
+        <input style={{ ...styles.input, marginBottom: 14 }} placeholder="你的名字（例：家盈）"
+          value={myName} onChange={(e) => setMyName(e.target.value)} />
+        <button style={{ ...styles.addBtn, width: "100%", padding: "12px" }} onClick={startSync}>開始記帳</button>
+      </div>
+    </div>
+  );
+  if (!data || !cur) return <div style={{ fontFamily: "'Noto Sans TC',sans-serif", padding: 40, color: "#7A8681" }}>連線雲端帳本中⋯</div>;
+
+  const { keys, byMonth } = computeAll(data);
+  const m = data.months[cur];
+  const c = byMonth[cur];
+  const names = data.names;
+
+  const patchMonth = (patch) => setData({ ...data, months: { ...data.months, [cur]: { ...m, ...patch } } });
+  const setNum = (arr, i, v, key) => { const a = [...m[key]]; a[i] = v; patchMonth({ [key]: a }); };
+
+  const addExpense = () => {
+    if (!form.item || !form.amount) return;
+    const e = { id: uid(), date: form.date || `${cur}-01`, cat: form.cat, item: form.item, amount: Number(form.amount), payer: Number(form.payer), note: form.note, by: myName };
+    patchMonth({ expenses: [...m.expenses, e].sort((a, b) => a.date.localeCompare(b.date)) });
+    setForm({ ...form, item: "", amount: "", note: "" });
+  };
+  const delExpense = (id) => patchMonth({ expenses: m.expenses.filter((e) => e.id !== id) });
+
+  const addMonth = () => {
+    const k = nextMonthKey(keys[keys.length - 1]);
+    setData({ ...data, months: { ...data.months, [k]: { due: [...m.due], extra: [{ amount: 0, note: "" }, { amount: 0, note: "" }], actual: [null, null], expenses: [] } } });
+    setCur(k); setTab("overview");
+  };
+  const delMonth = () => {
+    if (keys.length <= 1) return;
+    const k = keys[keys.length - 1];
+    const rest = { ...data.months }; delete rest[k];
+    setData({ ...data, months: rest });
+    setCur(keys[keys.length - 2]);
+  };
+
+  const exportData = () => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "家庭帳本備份.json"; a.click();
+    URL.revokeObjectURL(a.href);
+  };
+  const importData = (ev) => {
+    const f = ev.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      try { const d = JSON.parse(r.result); setData(d); setCur(Object.keys(d.months).sort().slice(-1)[0]); }
+      catch (e) { alert("備份檔格式不正確"); }
+    };
+    r.readAsText(f); ev.target.value = "";
+  };
+
+  const payerName = (p) => (p === 2 ? "共同帳戶" : `${names[p]}先墊`);
+  const payerColor = (p) => (p === 2 ? "#1D6A52" : p === 0 ? "#B98A2F" : "#5B7FA6");
+  const allSettled = c.unsettled.every((u, i) => (m.actual[i] !== null) && Math.abs(u) < 0.5);
+
+  const S = styles;
+  return (
+    <div style={S.page}>
+      <style>{css}</style>
+
+      {/* 表頭 */}
+      <header style={S.header}>
+        <div>
+          <div style={S.eyebrow}>共同帳戶・月結帳本</div>
+          <h1 style={S.title}>我們家的帳</h1>
+        </div>
+        <div style={S.saveTag}>
+          {saveState === "saving" ? "同步中⋯" : saveState === "error" ? "離線，恢復連線後自動同步" : "已同步雲端"}
+        </div>
+      </header>
+
+      {/* 月份選單 */}
+      <div style={S.monthBar}>
+        {keys.map((k) => (
+          <button key={k} onClick={() => setCur(k)} className="mtab" style={{ ...S.mtab, ...(k === cur ? S.mtabOn : {}) }}>
+            {monthLabel(k)}
+          </button>
+        ))}
+        <button onClick={addMonth} style={{ ...S.mtab, borderStyle: "dashed", color: "#1D6A52" }}>＋ 新月份</button>
+      </div>
+
+      {/* 分頁 */}
+      <nav style={S.tabs}>
+        {[["overview", "總覽與結算"], ["expenses", "支出明細"], ["analysis", "類別分析"]].map(([id, label]) => (
+          <button key={id} onClick={() => setTab(id)} style={{ ...S.tab, ...(tab === id ? S.tabOn : {}) }}>{label}</button>
+        ))}
+      </nav>
+
+      {tab === "overview" && (
+        <>
+          {/* 收支總覽 */}
+          <section style={S.card}>
+            <div style={S.cardHead}>① 收支總覽</div>
+            <div style={S.grid4}>
+              <Stat label="上月結餘" value={c.prevBalance} />
+              <Stat label="本月總收入" value={c.income} />
+              <Stat label="本月總支出" value={c.expense} />
+              <Stat label="累計結餘" value={c.cumBalance} big />
+            </div>
+            <div style={S.bankLine}>
+              推算銀行餘額 <b style={{ fontVariantNumeric: "tabular-nums" }}>{fmt(c.bankCash)}</b>
+              {Math.abs(c.bankCash - c.cumBalance) < 0.5
+                ? <span style={S.okChip}>與帳面一致</span>
+                : <span style={S.warnChip}>與帳面差 {fmt(c.cumBalance - c.bankCash)}（有未結款）</span>}
+            </div>
+          </section>
+
+          {/* 匯款結算 */}
+          <section style={S.card}>
+            <div style={S.cardHead}>② 匯款結算 <span style={S.hint}>應匯入為負＝帳戶欠他，帳戶退款時「實際匯入」填負數</span></div>
+            <div style={S.settleWrap}>
+              {[0, 1].map((p) => {
+                const settled = m.actual[p] !== null && Math.abs(c.unsettled[p]) < 0.5;
+                return (
+                  <div key={p} style={S.slip}>
+                    <div style={S.slipName}>{names[p]}</div>
+                    <SlipRow label="本月應繳"><NumInput value={m.due[p]} onChange={(v) => setNum(m.due, p, v, "due")} /></SlipRow>
+                    <SlipRow label="代收款">
+                      <NumInput value={m.extra[p].amount} onChange={(v) => { const a = [...m.extra]; a[p] = { ...a[p], amount: v }; patchMonth({ extra: a }); }} />
+                    </SlipRow>
+                    <input
+                      style={S.noteInput} placeholder="代收備註（如：媽媽給的）" value={m.extra[p].note}
+                      onChange={(e) => { const a = [...m.extra]; a[p] = { ...a[p], note: e.target.value }; patchMonth({ extra: a }); }}
+                    />
+                    <SlipRow label="上月結轉" auto value={c.carryIn[p]} />
+                    <SlipRow label="先行支出（自動）" auto value={-c.prepaid[p]} />
+                    <div style={S.slipMain}>
+                      <span>應匯入金額</span>
+                      <b style={{ color: c.expected[p] < 0 ? "#BF3F2E" : "#17322B", fontSize: 22, fontVariantNumeric: "tabular-nums" }}>{fmt(c.expected[p])}</b>
+                    </div>
+                    <SlipRow label="實際匯入">
+                      <NumInput value={m.actual[p]} placeholder="尚未匯" allowNull onChange={(v) => setNum(m.actual, p, v, "actual")} />
+                    </SlipRow>
+                    <div style={{ ...S.stamp, ...(settled ? S.stampOk : S.stampNo) }}>
+                      {m.actual[p] === null ? "待匯款" : settled ? "已結清" : `未結 ${fmt(c.unsettled[p])}（自動轉下月）`}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {allSettled && <div style={S.allOk}>本月兩人皆已結清，銀行餘額應等於累計結餘 {fmt(c.cumBalance)}。</div>}
+          </section>
+        </>
+      )}
+
+      {tab === "expenses" && (
+        <section style={S.card}>
+          <div style={S.cardHead}>③ 支出明細 <span style={S.hint}>不論誰付的都記這裡；退貨退款填負數金額</span></div>
+
+          {/* 新增列 */}
+          <div style={S.form}>
+            <input type="date" style={S.input} value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+            <select style={S.input} value={form.cat} onChange={(e) => setForm({ ...form, cat: e.target.value })}>
+              {CATS.map((x) => <option key={x}>{x}</option>)}
+            </select>
+            <input style={S.input} placeholder="項目（如：貓飼料）" value={form.item} onChange={(e) => setForm({ ...form, item: e.target.value })} />
+            <input style={S.input} type="number" inputMode="decimal" placeholder="金額" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
+            <select style={S.input} value={form.payer} onChange={(e) => setForm({ ...form, payer: e.target.value })}>
+              <option value={2}>共同帳戶</option><option value={0}>{names[0]}先墊</option><option value={1}>{names[1]}先墊</option>
+            </select>
+            <input style={S.input} placeholder="備註（選填）" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+            <button style={S.addBtn} onClick={addExpense}>記一筆</button>
+          </div>
+
+          {/* 明細列表 */}
+          {m.expenses.length === 0 && <div style={S.empty}>還沒有紀錄。記下第一筆支出，結算區就會自動更新。</div>}
+          <div>
+            {m.expenses.map((e) => (
+              <div key={e.id} style={S.row}>
+                <span style={S.rowDate}>{e.date.slice(5).replace("-", "/")}</span>
+                <span style={{ ...S.catDot, background: CAT_COLOR[e.cat] }} />
+                <span style={S.rowItem}>
+                  {e.item}
+                  <span style={S.rowSub}>{e.cat}{e.by ? `・${e.by}記` : ""}{e.note ? `・${e.note}` : ""}</span>
+                </span>
+                <span style={{ ...S.payerChip, color: payerColor(e.payer), borderColor: payerColor(e.payer) }}>{payerName(e.payer)}</span>
+                <span style={{ ...S.rowAmt, color: e.amount < 0 ? "#BF3F2E" : "#17322B" }}>{fmt(e.amount)}</span>
+                <button style={S.del} onClick={() => delExpense(e.id)} aria-label="刪除">✕</button>
+              </div>
+            ))}
+          </div>
+          <div style={S.totalLine}>本月合計 <b style={{ fontVariantNumeric: "tabular-nums" }}>{fmt(c.expense)}</b></div>
+        </section>
+      )}
+
+      {tab === "analysis" && (
+        <section style={S.card}>
+          <div style={S.cardHead}>④ 類別分析</div>
+          {c.expense === 0 ? <div style={S.empty}>本月尚無支出可分析。</div> : (
+            <div>
+              {CATS.filter((k) => c.cats[k]).sort((a, b) => c.cats[b] - c.cats[a]).map((k) => {
+                const v = c.cats[k], pct = (v / c.expense) * 100;
+                return (
+                  <div key={k} style={{ marginBottom: 14 }}>
+                    <div style={S.barLabel}>
+                      <span>{k}</span>
+                      <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmt(v)}<span style={S.pct}>{pct.toFixed(1)}%</span></span>
+                    </div>
+                    <div style={S.barBg}><div style={{ ...S.bar, width: `${pct}%`, background: CAT_COLOR[k] }} /></div>
+                  </div>
+                );
+              })}
+              <div style={S.splitLine}>
+                付款來源：{names[0]}先墊 {fmt(c.prepaid[0])}｜{names[1]}先墊 {fmt(c.prepaid[1])}｜共同帳戶 {fmt(c.expense - c.prepaid[0] - c.prepaid[1])}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* 設定 */}
+      <div style={S.footer}>
+        <button style={S.linkBtn} onClick={() => setShowSettings(!showSettings)}>{showSettings ? "收起設定" : "設定"}</button>
+        {showSettings && (
+          <div style={S.settings}>
+            <label style={S.setLabel}>成員一 <input style={S.input} value={names[0]} onChange={(e) => setData({ ...data, names: [e.target.value, names[1]] })} /></label>
+            <label style={S.setLabel}>成員二 <input style={S.input} value={names[1]} onChange={(e) => setData({ ...data, names: [names[0], e.target.value] })} /></label>
+            {keys.length > 1 && <button style={{ ...S.linkBtn, color: "#BF3F2E" }} onClick={delMonth}>刪除最後一個月份（{monthLabel(keys[keys.length - 1])}）</button>}
+            <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+              <button style={S.linkBtn} onClick={exportData}>匯出備份</button>
+              <label style={{ ...S.linkBtn, cursor: "pointer" }}>匯入備份<input type="file" accept=".json" style={{ display: "none" }} onChange={importData} /></label>
+              <button style={S.linkBtn} onClick={changeFamily}>更換家庭代碼</button>
+            </div>
+            <div style={{ fontSize: 12, color: "#7A8681" }}>目前家庭代碼：{codeRef.current}｜我是：{myName || "未設定"}</div>
+          </div>
+        )}
+        <div style={S.footNote}>帳本儲存在雲端，兩支手機輸入同一組家庭代碼即可即時同步；沒網路時可照常記帳，恢復連線後自動補傳。</div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── 小元件 ─── */
+function Stat({ label, value, big }) {
+  return (
+    <div style={{ padding: "10px 12px", background: big ? "#EAF2EE" : "transparent", borderRadius: 10 }}>
+      <div style={{ fontSize: 12, color: "#7A8681", marginBottom: 2 }}>{label}</div>
+      <div style={{ fontFamily: "Georgia,'Noto Serif TC',serif", fontSize: big ? 26 : 20, fontWeight: 700, color: value < 0 ? "#BF3F2E" : "#17322B", fontVariantNumeric: "tabular-nums" }}>
+        {fmt(value)}
+      </div>
+    </div>
+  );
+}
+function SlipRow({ label, children, auto, value }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px dashed #DDE4E0", fontSize: 14 }}>
+      <span style={{ color: "#5C6B64" }}>{label}</span>
+      {auto ? <span style={{ fontVariantNumeric: "tabular-nums", color: value < 0 ? "#BF3F2E" : "#17322B" }}>{fmt(value)}</span> : children}
+    </div>
+  );
+}
+function NumInput({ value, onChange, placeholder, allowNull }) {
+  return (
+    <input
+      type="number" inputMode="decimal"
+      style={{ width: 110, textAlign: "right", border: "1px solid #C9D3CE", borderRadius: 8, padding: "4px 8px", fontSize: 14, fontVariantNumeric: "tabular-nums", background: "#fff", color: "#17322B" }}
+      value={value ?? ""} placeholder={placeholder}
+      onChange={(e) => {
+        const v = e.target.value;
+        if (v === "" && allowNull) return onChange(null);
+        onChange(Number(v) || 0);
+      }}
+    />
+  );
+}
+
+/* ─── 樣式 ─── */
+const styles = {
+  page: { fontFamily: "'Noto Sans TC',-apple-system,sans-serif", background: "#F2F5F3", minHeight: "100vh", padding: "20px 14px 60px", color: "#17322B", maxWidth: 860, margin: "0 auto" },
+  header: { display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16 },
+  eyebrow: { fontSize: 12, letterSpacing: 2, color: "#1D6A52", fontWeight: 700 },
+  title: { fontFamily: "Georgia,'Noto Serif TC',serif", fontSize: 30, margin: "2px 0 0", fontWeight: 700 },
+  saveTag: { fontSize: 12, color: "#7A8681" },
+  monthBar: { display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8, marginBottom: 8 },
+  mtab: { flexShrink: 0, border: "1px solid #C9D3CE", background: "#fff", borderRadius: 999, padding: "6px 14px", fontSize: 13, cursor: "pointer", color: "#5C6B64" },
+  mtabOn: { background: "#1D6A52", borderColor: "#1D6A52", color: "#fff", fontWeight: 700 },
+  tabs: { display: "flex", gap: 4, background: "#E4EAE7", borderRadius: 12, padding: 4, marginBottom: 16 },
+  tab: { flex: 1, border: "none", background: "transparent", borderRadius: 9, padding: "8px 4px", fontSize: 14, cursor: "pointer", color: "#5C6B64" },
+  tabOn: { background: "#fff", color: "#17322B", fontWeight: 700, boxShadow: "0 1px 2px rgba(23,50,43,.08)" },
+  card: { background: "#fff", borderRadius: 14, padding: "16px 16px 18px", marginBottom: 16, boxShadow: "0 1px 3px rgba(23,50,43,.06)" },
+  cardHead: { fontWeight: 700, fontSize: 15, marginBottom: 12, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "baseline" },
+  hint: { fontWeight: 400, fontSize: 12, color: "#7A8681" },
+  grid4: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 6 },
+  bankLine: { marginTop: 12, paddingTop: 10, borderTop: "1px solid #EDF1EF", fontSize: 13, color: "#5C6B64", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" },
+  okChip: { fontSize: 12, background: "#EAF2EE", color: "#1D6A52", borderRadius: 999, padding: "2px 10px" },
+  warnChip: { fontSize: 12, background: "#FBEFEC", color: "#BF3F2E", borderRadius: 999, padding: "2px 10px" },
+  settleWrap: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 12 },
+  slip: { border: "1px solid #DDE4E0", borderRadius: 12, padding: "12px 14px", background: "linear-gradient(180deg,#FCFDFC, #F6F9F7)" },
+  slipName: { fontFamily: "Georgia,'Noto Serif TC',serif", fontSize: 18, fontWeight: 700, marginBottom: 6, color: "#1D6A52" },
+  slipMain: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0 6px" },
+  noteInput: { width: "100%", border: "none", borderBottom: "1px dashed #DDE4E0", background: "transparent", fontSize: 12, padding: "4px 0", color: "#7A8681", outline: "none" },
+  stamp: { marginTop: 8, textAlign: "center", borderRadius: 8, padding: "6px 0", fontSize: 13, fontWeight: 700, border: "1.5px solid" },
+  stampOk: { color: "#1D6A52", borderColor: "#1D6A52", background: "#EAF2EE" },
+  stampNo: { color: "#BF3F2E", borderColor: "#BF3F2E", background: "#FBEFEC" },
+  allOk: { marginTop: 12, fontSize: 13, color: "#1D6A52", background: "#EAF2EE", borderRadius: 8, padding: "8px 12px" },
+  form: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 8, marginBottom: 14 },
+  input: { border: "1px solid #C9D3CE", borderRadius: 8, padding: "8px 10px", fontSize: 14, background: "#fff", color: "#17322B", width: "100%", boxSizing: "border-box" },
+  addBtn: { border: "none", background: "#1D6A52", color: "#fff", borderRadius: 8, padding: "8px 10px", fontSize: 14, fontWeight: 700, cursor: "pointer" },
+  empty: { color: "#7A8681", fontSize: 14, padding: "18px 0", textAlign: "center" },
+  row: { display: "flex", alignItems: "center", gap: 8, padding: "9px 0", borderBottom: "1px solid #EDF1EF" },
+  rowDate: { fontSize: 12, color: "#7A8681", width: 38, flexShrink: 0, fontVariantNumeric: "tabular-nums" },
+  catDot: { width: 8, height: 8, borderRadius: "50%", flexShrink: 0 },
+  rowItem: { flex: 1, fontSize: 14, display: "flex", flexDirection: "column", minWidth: 0 },
+  rowSub: { fontSize: 11, color: "#7A8681" },
+  payerChip: { fontSize: 11, border: "1px solid", borderRadius: 999, padding: "1px 8px", flexShrink: 0 },
+  rowAmt: { fontVariantNumeric: "tabular-nums", fontWeight: 600, fontSize: 14, width: 70, textAlign: "right", flexShrink: 0 },
+  del: { border: "none", background: "transparent", color: "#C9D3CE", cursor: "pointer", fontSize: 13, padding: "2px 4px" },
+  totalLine: { textAlign: "right", paddingTop: 10, fontSize: 14, color: "#5C6B64" },
+  barLabel: { display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 },
+  pct: { color: "#7A8681", marginLeft: 8, fontSize: 12 },
+  barBg: { height: 10, background: "#EDF1EF", borderRadius: 999, overflow: "hidden" },
+  bar: { height: "100%", borderRadius: 999, transition: "width .3s" },
+  splitLine: { marginTop: 16, paddingTop: 10, borderTop: "1px solid #EDF1EF", fontSize: 12, color: "#7A8681" },
+  footer: { marginTop: 8 },
+  linkBtn: { border: "none", background: "transparent", color: "#1D6A52", fontSize: 13, cursor: "pointer", textDecoration: "underline", padding: 0 },
+  settings: { background: "#fff", borderRadius: 12, padding: 14, marginTop: 8, display: "flex", flexDirection: "column", gap: 10, maxWidth: 320 },
+  setLabel: { fontSize: 13, color: "#5C6B64", display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between" },
+  footNote: { fontSize: 11, color: "#A3ADA8", marginTop: 10 },
+};
+
+const css = `
+  input:focus, select:focus { outline: 2px solid #1D6A52; outline-offset: 1px; }
+  button:focus-visible { outline: 2px solid #1D6A52; outline-offset: 2px; }
+  .mtab:hover { border-color: #1D6A52; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+`;
+
+
+ReactDOM.createRoot(document.getElementById("root")).render(<FamilyLedger />);
+
+</script>
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+}
+</script>
+</body>
+</html>
