@@ -1,4 +1,4 @@
-const CACHE = 'family-ledger-cloud-v1';
+const CACHE = 'family-ledger-cloud-v2';
 const ASSETS = [
   './index.html', './manifest.json', './icon-192.png', './icon-512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js',

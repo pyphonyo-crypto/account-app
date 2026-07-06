@@ -133,6 +133,8 @@ function FamilyLedger() {
   const [familyCode, setFamilyCode] = useState("");
   const [myName, setMyName] = useState("");
   const [form, setForm] = useState({ date: "", cat: "伙食", item: "", amount: "", payer: 2, note: "" });
+  const [editId, setEditId] = useState(null);
+  const [editForm, setEditForm] = useState(null);
   const saveTimer = useRef(null);
   const loaded = useRef(false);
   const dbRef = useRef(null);
@@ -249,6 +251,17 @@ function FamilyLedger() {
     setForm({ ...form, item: "", amount: "", note: "" });
   };
   const delExpense = (id) => patchMonth({ expenses: m.expenses.filter((e) => e.id !== id) });
+  const startEdit = (e) => { setEditId(e.id); setEditForm({ ...e, amount: String(e.amount) }); };
+  const cancelEdit = () => { setEditId(null); setEditForm(null); };
+  const saveEdit = () => {
+    if (!editForm.item || editForm.amount === "") return;
+    patchMonth({
+      expenses: m.expenses.map((x) => x.id === editId
+        ? { ...x, date: editForm.date, cat: editForm.cat, item: editForm.item, amount: Number(editForm.amount), payer: Number(editForm.payer), note: editForm.note }
+        : x).sort((a, b) => a.date.localeCompare(b.date)),
+    });
+    cancelEdit();
+  };
 
   const addMonth = () => {
     const k = nextMonthKey(keys[keys.length - 1]);
@@ -375,7 +388,7 @@ function FamilyLedger() {
 
       {tab === "expenses" && (
         <section style={S.card}>
-          <div style={S.cardHead}>③ 支出明細 <span style={S.hint}>不論誰付的都記這裡；退貨退款填負數金額</span></div>
+          <div style={S.cardHead}>③ 支出明細 <span style={S.hint}>點任一筆可直接修改；退貨退款填負數金額</span></div>
 
           {/* 新增列 */}
           <div style={S.form}>
@@ -395,16 +408,36 @@ function FamilyLedger() {
           {/* 明細列表 */}
           {m.expenses.length === 0 && <div style={S.empty}>還沒有紀錄。記下第一筆支出，結算區就會自動更新。</div>}
           <div>
-            {m.expenses.map((e) => (
+            {m.expenses.map((e) => editId === e.id ? (
+              <div key={e.id} style={{ background: "#F0F5F2", borderRadius: 10, padding: "10px 8px", marginBottom: 6 }}>
+                <div style={{ ...S.form, marginBottom: 8 }}>
+                  <input type="date" style={S.input} value={editForm.date} onChange={(ev) => setEditForm({ ...editForm, date: ev.target.value })} />
+                  <select style={S.input} value={editForm.cat} onChange={(ev) => setEditForm({ ...editForm, cat: ev.target.value })}>
+                    {CATS.map((x) => <option key={x}>{x}</option>)}
+                  </select>
+                  <input style={S.input} placeholder="項目" value={editForm.item} onChange={(ev) => setEditForm({ ...editForm, item: ev.target.value })} />
+                  <input style={S.input} type="number" inputMode="decimal" placeholder="金額" value={editForm.amount} onChange={(ev) => setEditForm({ ...editForm, amount: ev.target.value })} />
+                  <select style={S.input} value={editForm.payer} onChange={(ev) => setEditForm({ ...editForm, payer: ev.target.value })}>
+                    <option value={2}>共同帳戶</option><option value={0}>{names[0]}先墊</option><option value={1}>{names[1]}先墊</option>
+                  </select>
+                  <input style={S.input} placeholder="備註（選填）" value={editForm.note} onChange={(ev) => setEditForm({ ...editForm, note: ev.target.value })} />
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button style={{ ...S.addBtn, flex: 1 }} onClick={saveEdit}>儲存修改</button>
+                  <button style={{ ...S.addBtn, flex: 1, background: "#7A8681" }} onClick={cancelEdit}>取消</button>
+                </div>
+              </div>
+            ) : (
               <div key={e.id} style={S.row}>
                 <span style={S.rowDate}>{e.date.slice(5).replace("-", "/")}</span>
                 <span style={{ ...S.catDot, background: CAT_COLOR[e.cat] }} />
-                <span style={S.rowItem}>
+                <span style={{ ...S.rowItem, cursor: "pointer" }} onClick={() => startEdit(e)}>
                   {e.item}
                   <span style={S.rowSub}>{e.cat}{e.by ? `・${e.by}記` : ""}{e.note ? `・${e.note}` : ""}</span>
                 </span>
-                <span style={{ ...S.payerChip, color: payerColor(e.payer), borderColor: payerColor(e.payer) }}>{payerName(e.payer)}</span>
+                <span style={{ ...S.payerChip, color: payerColor(e.payer), borderColor: payerColor(e.payer), cursor: "pointer" }} onClick={() => startEdit(e)}>{payerName(e.payer)}</span>
                 <span style={{ ...S.rowAmt, color: e.amount < 0 ? "#BF3F2E" : "#17322B" }}>{fmt(e.amount)}</span>
+                <button style={{ ...S.del, color: "#7A8681" }} onClick={() => startEdit(e)} aria-label="編輯">✎</button>
                 <button style={S.del} onClick={() => delExpense(e.id)} aria-label="刪除">✕</button>
               </div>
             ))}
